@@ -3,28 +3,29 @@ using namespace std;
 static string EPSILON_SYMBOL = "ε";
 static int globalNextStateId = 0;
 
-// Generate a new state name in qXXX format (3-digit zero-padded)
+// 상태 이름을 qXXX(3자리) 형식으로 생성하는 함수
 string generateStateName() {
     char buf[10];
     sprintf(buf, "q%03d", globalNextStateId++);
     return string(buf);
 }
 
-// Forward declarations for classes
+// 클래스를 위해 앞에서 미리 선언
 class DFA;
 class ReducedDFA;
 
 class NFA {
 public:
-    vector<string> states;
-    vector<char> alphabet;
-    unordered_map<string, unordered_map<char, set<string>>> transitions;
-    unordered_map<string, set<string>> epsilonTransitions;
-    string startState;
-    vector<string> finalStates;
+    vector<string> states; // 상태 집합
+    vector<char> alphabet; // 입력 알파벳
+    unordered_map<string, unordered_map<char, set<string>>> transitions; // 상태 전이 함수
+    unordered_map<string, set<string>> epsilonTransitions; // 입실론 전이 함수
+    string startState; // 시작 상태
+    vector<string> finalStates; // 종료 상태 집합
 
+    // NFA 정보를 파일에서 읽어오는 함수
     bool loadFromFile(const string& filename) {
-        // Initialize NFA containers
+        // NFA 관련 컨테이너 초기화
         states.clear();
         alphabet.clear();
         transitions.clear();
@@ -41,7 +42,7 @@ public:
         int braceCount = 0;
         while (getline(fin, line)) {
             if (readingDelta) {
-                // Continue reading multi-line DeltaFunctions
+                // 여러 줄에 걸친 DeltaFunctions 계속 읽기
                 for (char ch : line) {
                     if (ch == '{') braceCount++;
                     if (ch == '}') braceCount--;
@@ -54,7 +55,7 @@ public:
                 if (readingDelta) deltaContent.push_back(' ');
                 continue;
             }
-            // Parse FinalStateSet before StateSet to avoid substring confusion
+            // StateSet보다 FinalStateSet을 먼저 파싱 (이름 중복 방지)
             if (line.find("FinalStateSet") != string::npos && line.find('{') != string::npos) {
                 size_t l = line.find('{'), r = line.rfind('}');
                 if (l != string::npos && r != string::npos && r > l) {
@@ -63,7 +64,7 @@ public:
                     stringstream ss(inside);
                     while (getline(ss, token, ',')) {
                         string st = token;
-                        // trim whitespace
+                        // 공백 제거
                         size_t startpos = st.find_first_not_of(" \t");
                         size_t endpos = st.find_last_not_of(" \t");
                         if (startpos == string::npos || endpos == string::npos) continue;
@@ -103,7 +104,7 @@ public:
                         if (startpos == string::npos || endpos == string::npos) continue;
                         sym = sym.substr(startpos, endpos - startpos + 1);
                         if (!sym.empty()) {
-                            if (sym == EPSILON_SYMBOL) continue; // do not include ε in alphabet
+                            if (sym == EPSILON_SYMBOL) continue; // ε는 알파벳에 포함하지 않음
                             if (sym.size() == 1) alphabet.push_back(sym[0]);
                         }
                     }
@@ -119,7 +120,7 @@ public:
                     }
                 }
             } else if (line.find("DeltaFunctions") != string::npos && line.find('{') != string::npos) {
-                // Begin reading DeltaFunctions (may span multiple lines)
+                // DeltaFunctions(상태전이함수) 여러 줄 읽기 시작
                 size_t pos = line.find('{');
                 braceCount = 0;
                 for (size_t j = pos; j < line.size(); ++j) {
@@ -136,19 +137,19 @@ public:
             }
         }
         fin.close();
-        // Parse collected DeltaFunctions content
+        // DeltaFunctions 내용 파싱
         if (!deltaContent.empty()) {
             if (deltaContent.front() == '{') deltaContent.erase(deltaContent.begin());
             if (!deltaContent.empty() && deltaContent.back() == '}') deltaContent.pop_back();
             string inside = deltaContent;
             size_t i = 0;
             while (i < inside.size()) {
-                // skip whitespace and commas between entries
+                // 엔트리 사이의 공백 및 콤마 건너뛰기
                 while (i < inside.size() && (isspace((unsigned char)inside[i]) || inside[i] == ',')) i++;
                 if (i >= inside.size()) break;
                 if (inside[i] != '(') { i++; continue; }
-                i++; // skip '('
-                // parse source state name
+                i++; // '(' 건너뛰기
+                // 출발 상태 이름 파싱
                 string srcState;
                 while (i < inside.size() && inside[i] != ',') {
                     if (!isspace((unsigned char)inside[i])) srcState.push_back(inside[i]);
@@ -156,14 +157,14 @@ public:
                 }
                 if (i < inside.size() && inside[i] == ',') i++;
                 while (i < inside.size() && isspace((unsigned char)inside[i])) i++;
-                // parse symbol
+                // 입력 심볼 파싱
                 string symStr;
                 while (i < inside.size() && inside[i] != ')') {
                     if (!isspace((unsigned char)inside[i])) symStr.push_back(inside[i]);
                     i++;
                 }
                 if (i < inside.size() && inside[i] == ')') i++;
-                // skip " = "
+                // " = " 건너뛰기
                 while (i < inside.size() && (isspace((unsigned char)inside[i]) || inside[i] == '=')) {
                     if (inside[i] == '{') break;
                     i++;
@@ -171,12 +172,12 @@ public:
                 if (i < inside.size() && inside[i] == '=') i++;
                 while (i < inside.size() && isspace((unsigned char)inside[i])) i++;
                 if (i < inside.size() && inside[i] == '{') i++;
-                // parse target state set
+                // 도착 상태 집합 파싱
                 set<string> tgtSet;
                 string tgt;
                 while (i < inside.size() && inside[i] != '}') {
                     if (inside[i] == ',') {
-                        // end of one target state
+                        // 하나의 도착 상태 끝
                         string ttrim = tgt;
                         size_t sp = ttrim.find_first_not_of(" \t");
                         size_t ep = ttrim.find_last_not_of(" \t");
@@ -202,12 +203,12 @@ public:
                     tgt.clear();
                 }
                 if (i < inside.size() && inside[i] == '}') i++;
-                // Store transitions
+                // 전이 저장
                 if (symStr == EPSILON_SYMBOL) {
-                    // ε-transition
+                    // ε-전이
                     epsilonTransitions[srcState].insert(tgtSet.begin(), tgtSet.end());
                 } else if (!symStr.empty()) {
-                    char sym = symStr.size() == 1 ? symStr[0] : symStr[0]; // (multi-char symbols not expected in this input)
+                    char sym = symStr.size() == 1 ? symStr[0] : symStr[0]; // (여러 글자 심볼은 입력에 없음)
                     transitions[srcState][sym].insert(tgtSet.begin(), tgtSet.end());
                 }
             }
@@ -215,6 +216,7 @@ public:
         return true;
     }
 
+    // NFA 정보를 파일로 출력하는 함수
     void outputToFile(const string& filename) {
         ofstream fout(filename);
         // StateSet
@@ -294,17 +296,67 @@ public:
         fout.close();
     }
 
+    // NFA를 DFA로 변환하는 함수 (부분집합 구성법, ε-closure 포함)
     DFA toDFA();
 };
 
 class DFA {
 public:
-    vector<string> states;
-    vector<char> alphabet;
-    unordered_map<string, unordered_map<char, string>> transitions;
-    string startState;
-    vector<string> finalStates;
+    vector<string> states; // 상태 집합
+    vector<char> alphabet; // 입력 알파벳
+    unordered_map<string, unordered_map<char, string>> transitions; // 상태 전이 함수
+    string startState; // 시작 상태
+    vector<string> finalStates; // 종료 상태 집합
+    unordered_map<string, set<string>> dfaStateToNfaSet; // DFA 상태 -> NFA 상태 집합 매핑
 
+    // 접근 불가능한 상태를 제거하는 함수 (BFS)
+    void removeUnreachableStates() {
+        set<string> reachable;
+        queue<string> q;
+        q.push(startState);
+        reachable.insert(startState);
+        while (!q.empty()) {
+            string cur = q.front(); q.pop();
+            for (char c : alphabet) {
+                if (transitions.count(cur) && transitions[cur].count(c)) {
+                    string next = transitions[cur][c];
+                    if (!reachable.count(next)) {
+                        reachable.insert(next);
+                        q.push(next);
+                    }
+                }
+            }
+        }
+        // reachable 상태만 남기고 나머지는 모두 제거
+        vector<string> newStates;
+        for (const string& s : states) {
+            if (reachable.count(s)) newStates.push_back(s);
+        }
+        states = newStates;
+        unordered_map<string, unordered_map<char, string>> newTransitions;
+        for (const string& s : states) {
+            for (char c : alphabet) {
+                if (transitions.count(s) && transitions[s].count(c)) {
+                    string next = transitions[s][c];
+                    if (reachable.count(next))
+                        newTransitions[s][c] = next;
+                }
+            }
+        }
+        transitions = newTransitions;
+        vector<string> newFinalStates;
+        for (const string& s : finalStates) {
+            if (reachable.count(s)) newFinalStates.push_back(s);
+        }
+        finalStates = newFinalStates;
+        unordered_map<string, set<string>> newMap;
+        for (const auto& p : dfaStateToNfaSet) {
+            if (reachable.count(p.first)) newMap[p.first] = p.second;
+        }
+        dfaStateToNfaSet = newMap;
+    }
+
+    // DFA 정보를 파일로 출력하는 함수
     void outputToFile(const string& filename) {
         ofstream fout(filename);
         fout << "StateSet = { ";
@@ -314,6 +366,17 @@ public:
             else fout << " ";
         }
         fout << "}" << endl;
+        // DFA 상태의 NFA 집합 정보 주석으로 출력
+        fout << "# DFA State Origins" << endl;
+        for (const auto& p : dfaStateToNfaSet) {
+            fout << "# " << p.first << " = {";
+            size_t cnt = 0;
+            for (const auto& s : p.second) {
+                fout << s;
+                if (++cnt < p.second.size()) fout << ", ";
+            }
+            fout << "}" << endl;
+        }
         fout << "TerminalSet = { ";
         for (size_t i = 0; i < alphabet.size(); ++i) {
             fout << alphabet[i];
@@ -362,17 +425,21 @@ public:
         fout.close();
     }
 
+    // DFA를 최소화하는 함수 (Hopcroft 알고리즘)
     ReducedDFA minimize();
 };
 
 class ReducedDFA {
 public:
-    vector<string> states;
-    vector<char> alphabet;
-    unordered_map<string, unordered_map<char, string>> transitions;
-    string startState;
-    vector<string> finalStates;
+    vector<string> states; // 상태 집합
+    vector<char> alphabet; // 입력 알파벳
+    unordered_map<string, unordered_map<char, string>> transitions; // 상태 전이 함수
+    string startState; // 시작 상태
+    vector<string> finalStates; // 종료 상태 집합
+    unordered_map<string, set<string>> reducedStateToDfaSet; // ReducedDFA 상태 -> 원래 DFA 상태 집합
+    unordered_map<string, set<string>> reducedStateToNfaSet; // ReducedDFA 상태 -> 원래 NFA 상태 집합
 
+    // ReducedDFA 정보를 파일로 출력하는 함수
     void outputToFile(const string& filename) {
         ofstream fout(filename);
         fout << "StateSet = { ";
@@ -382,6 +449,23 @@ public:
             else fout << " ";
         }
         fout << "}" << endl;
+        // ReducedDFA 상태의 DFA/NFA 집합 정보 주석으로 출력
+        fout << "# ReducedDFA State Origins" << endl;
+        for (const auto& p : reducedStateToDfaSet) {
+            fout << "# " << p.first << " = DFA{";
+            size_t cnt = 0;
+            for (const auto& s : p.second) {
+                fout << s;
+                if (++cnt < p.second.size()) fout << ", ";
+            }
+            fout << "} NFA{";
+            cnt = 0;
+            for (const auto& s : reducedStateToNfaSet.at(p.first)) {
+                fout << s;
+                if (++cnt < reducedStateToNfaSet.at(p.first).size()) fout << ", ";
+            }
+            fout << "}" << endl;
+        }
         fout << "TerminalSet = { ";
         for (size_t i = 0; i < alphabet.size(); ++i) {
             fout << alphabet[i];
@@ -431,13 +515,13 @@ public:
     }
 };
 
-// Convert NFA to DFA (ε-closure and subset construction)
+// NFA를 DFA로 변환하는 함수 (부분집합 구성법, ε-closure 포함)
 DFA NFA::toDFA() {
     DFA dfa;
-    dfa.alphabet = alphabet;  // same alphabet (excluding ε)
-    // Compute ε-closure of start state
+    dfa.alphabet = alphabet;  // 입력 알파벳 복사
+    // 시작 상태의 ε-closure 계산
     set<string> startSet = { startState };
-    // Lambda for epsilon-closure of a set of states
+    // 상태 집합의 ε-closure를 계산하는 람다 함수
     auto epsilonClosure = [&](const set<string>& stSet) {
         set<string> closure = stSet;
         stack<string> st;
@@ -456,13 +540,10 @@ DFA NFA::toDFA() {
         return closure;
     };
     set<string> startClosure = epsilonClosure(startSet);
-    // Map each set of NFA states to a DFA state name
-    // unordered_map<set<string>, string> subsetName; // 이 줄 삭제
-    // Use a custom comparator for set of strings in map (or use string key)
-    // We'll use an unordered_map with a custom hash for set<string> for efficiency
+    // 각 NFA 상태 집합에 대해 DFA 상태 이름을 할당
     struct SetHash {
         size_t operator()(const set<string>& st) const noexcept {
-            // simple hash by concatenating state names
+            // 상태 이름들을 이어붙여서 해시값 생성
             std::string concat;
             for (auto &s : st) concat += s + ",";
             return std::hash<std::string>()(concat);
@@ -474,12 +555,13 @@ DFA NFA::toDFA() {
         }
     };
     unordered_map<set<string>, string, SetHash, SetEqual> stateMap;
-    // Assign name to start state closure
+    // 시작 상태의 ε-closure에 이름 할당
     string startName = generateStateName();
     stateMap[startClosure] = startName;
     dfa.states.push_back(startName);
     dfa.startState = startName;
-    // Mark as final if any NFA final is in the closure
+    dfa.dfaStateToNfaSet[startName] = startClosure; // 추가
+    // ε-closure에 NFA 종료 상태가 포함되어 있으면 종료 상태로 지정
     bool isStartFinal = false;
     for (const string& s : startClosure) {
         if (find(finalStates.begin(), finalStates.end(), s) != finalStates.end()) {
@@ -488,16 +570,16 @@ DFA NFA::toDFA() {
         }
     }
     if (isStartFinal) dfa.finalStates.push_back(startName);
-    // Subset construction BFS
+    // 부분집합 구성법(BFS)
     queue< set<string> > q;
     q.push(startClosure);
     while (!q.empty()) {
         set<string> curSet = q.front();
         q.pop();
         string curName = stateMap[curSet];
-        // For each input symbol, compute transition
+        // 각 입력 심볼에 대해 전이 계산
         for (char c : alphabet) {
-            // Move from each state in curSet on symbol c
+            // curSet의 각 상태에서 c로 이동
             set<string> moveResult;
             for (const string& s : curSet) {
                 if (transitions.count(s) && transitions[s].count(c)) {
@@ -506,15 +588,16 @@ DFA NFA::toDFA() {
                     }
                 }
             }
-            // Compute ε-closure of the move result
+            // 이동 결과의 ε-closure 계산
             set<string> newClosure = epsilonClosure(moveResult);
             if (newClosure.empty()) continue;
             if (!stateMap.count(newClosure)) {
-                // New DFA state discovered
+                // 새로운 DFA 상태 발견
                 string newName = generateStateName();
                 stateMap[newClosure] = newName;
                 dfa.states.push_back(newName);
-                // Check if it's a final state
+                dfa.dfaStateToNfaSet[newName] = newClosure; // 추가
+                // 종료 상태 여부 확인
                 bool isFinal = false;
                 for (const string& s : newClosure) {
                     if (find(finalStates.begin(), finalStates.end(), s) != finalStates.end()) {
@@ -525,34 +608,34 @@ DFA NFA::toDFA() {
                 if (isFinal) dfa.finalStates.push_back(newName);
                 q.push(newClosure);
             }
-            // Record DFA transition
+            // DFA 전이 기록
             dfa.transitions[curName][c] = stateMap[newClosure];
         }
     }
     return dfa;
 }
 
-// Minimize DFA using Hopcroft's algorithm
+// DFA를 최소화하는 함수 (Hopcroft 알고리즘)
 ReducedDFA DFA::minimize() {
     ReducedDFA rdfa;
     rdfa.alphabet = alphabet;
     int n = states.size();
     if (n == 0) return rdfa;
-    // Map state name to index for convenience
+    // 상태 이름을 인덱스로 매핑
     unordered_map<string,int> index;
     for (int i = 0; i < n; ++i) index[states[i]] = i;
-    // Final state flags
+    // 종료 상태 플래그
     vector<bool> isFinal(n, false);
     for (const string& fs : finalStates) {
         if (index.count(fs)) isFinal[index[fs]] = true;
     }
-    // Initial partition: final vs non-final states
+    // 파티션 초기화: 종료/비종료 상태로 분리
     set<int> finalSet, nonFinalSet;
     for (int i = 0; i < n; ++i) {
         if (isFinal[i]) finalSet.insert(i);
         else nonFinalSet.insert(i);
     }
-    // Partition P and work list W
+    // 파티션 분할 및 refinement
     list< set<int> > P;
     if (!finalSet.empty()) P.push_back(finalSet);
     if (!nonFinalSet.empty()) P.push_back(nonFinalSet);
@@ -562,7 +645,7 @@ ReducedDFA DFA::minimize() {
         auto it = finalSet.empty() ? P.begin() : next(P.begin());
         W.push_back(it);
     }
-    // Precompute reverse transition map: for each symbol and state, which states have a transition to it
+    // 각 심볼별 역전이 맵 계산
     unordered_map<char, unordered_map<int, vector<int>>> revTrans;
     for (int i = 0; i < n; ++i) {
         for (char c : alphabet) {
@@ -572,14 +655,12 @@ ReducedDFA DFA::minimize() {
             }
         }
     }
-    // Hopcroft's partition refinement loop
+    // Hopcroft 파티션 refinement 루프
     while (!W.empty()) {
-        // Choose a partition A to refine others
         auto A_it = W.front();
         W.pop_front();
         const set<int>& A = *A_it;
         for (char c : alphabet) {
-            // X = set of states whose transition on c leads into A
             set<int> X;
             if (revTrans.count(c)) {
                 for (int t : A) {
@@ -591,30 +672,19 @@ ReducedDFA DFA::minimize() {
                 }
             }
             if (X.empty()) continue;
-            // Refine each partition Y with X
             for (auto itY = P.begin(); itY != P.end(); ) {
                 set<int>& Y = *itY;
-                // Split Y into Y1 = X∩Y and Y2 = Y\X
                 set<int> Y1, Y2;
                 for (int s : Y) {
                     if (X.count(s)) Y1.insert(s);
                     else Y2.insert(s);
                 }
                 if (!Y1.empty() && !Y2.empty()) {
-                    // Replace Y in P by Y1 and Y2
                     itY = P.erase(itY);
                     auto itY1 = P.insert(itY, Y1);
                     auto itY2 = P.insert(itY, Y2);
-                    // Update W
-                    // If Y was in W, replace with Y1 and Y2
-                    for (auto itW = W.begin(); itW != W.end(); ++itW) {
-                        if (*itW == itY1 || *itW == itY2) {
-                            // (We handle addition below, so do nothing here)
-                        }
-                    }
-                    // Add the smaller subset to W (or both if Y was in W)
+                    // W(작업 리스트) 업데이트
                     if (Y.size() < INT_MAX) {
-                        // Check if original Y was in W
                         bool wasInW = false;
                         for (auto itW = W.begin(); itW != W.end(); ++itW) {
                             if (*itW == itY) { wasInW = true; break; }
@@ -633,31 +703,36 @@ ReducedDFA DFA::minimize() {
             }
         }
     }
-    // Construct ReducedDFA from final partition P
-    // Map each original state index to a new state name
+    // 최종 파티션별로 상태 생성 및 병합
     unordered_map<int,string> newName;
     for (auto& part : P) {
         string name = generateStateName();
         rdfa.states.push_back(name);
-        bool partIsFinal = false;
+        set<string> dfaSet;
+        set<string> nfaSet;
         for (int s : part) {
             newName[s] = name;
+            dfaSet.insert(states[s]);
+            for (const auto& nfa : dfaStateToNfaSet[states[s]]) {
+                nfaSet.insert(nfa);
+            }
+        }
+        rdfa.reducedStateToDfaSet[name] = dfaSet;
+        rdfa.reducedStateToNfaSet[name] = nfaSet;
+        bool partIsFinal = false;
+        for (int s : part) {
             if (isFinal[s]) partIsFinal = true;
         }
         if (partIsFinal) rdfa.finalStates.push_back(name);
-        // If this part contains the original DFA start state, mark as new start
-        // (there will be exactly one such part)
         if (index[startState] < n && part.count(index[startState])) {
             rdfa.startState = name;
         }
     }
-    // Define transitions for ReducedDFA
-    // For each original DFA state and symbol, link its partition's representative to target's representative
-    // We ensure each new state gets one outgoing per symbol (no duplicates due to partition equivalence)
+    // 병합된 상태에 대해 전이 정의
     unordered_set<string> handled;
     for (int i = 0; i < n; ++i) {
         string srcNew = newName[i];
-        if (handled.count(srcNew)) continue; // already set transitions for this new state
+        if (handled.count(srcNew)) continue;
         handled.insert(srcNew);
         for (char c : alphabet) {
             if (transitions.count(states[i]) && transitions[states[i]].count(c)) {
@@ -679,7 +754,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     string inputFile = argv[1];
-    // Determine base name without extension for output files
+    // 출력 파일명을 위한 확장자 없는 기본 이름 결정
     string base = inputFile;
     size_t dotPos = base.find_last_of('.');
     if (dotPos != string::npos) base = base.substr(0, dotPos);
@@ -689,27 +764,28 @@ int main(int argc, char* argv[]) {
         cerr << "Failed to load NFA from file: " << inputFile << endl;
         return 1;
     }
-    // Initialize name counter to avoid reusing existing state numbers
+    // 상태 이름 중복 방지를 위한 카운터 초기화
     int maxId = -1;
     for (const string& s : nfa.states) {
         if (s.size() > 1 && s[0] == 'q') {
-            // parse numeric part of state name
+            // 상태 이름에서 숫자 부분 파싱
             try {
                 int id = stoi(s.substr(1));
                 if (id > maxId) maxId = id;
-            } catch (...) { /* ignore non-numeric */ }
+            } catch (...) { /* 숫자가 아니면 무시 */ }
         }
     }
     globalNextStateId = maxId + 1;
 
-    // Output original NFA
+    // 원본 NFA 출력
     string nfaFile = base + "_nfa.txt";
     nfa.outputToFile(nfaFile);
-    // Convert to DFA (subset construction)
+    // DFA로 변환 (부분집합 구성법)
     DFA dfa = nfa.toDFA();
+    dfa.removeUnreachableStates(); // 접근 불가능한 상태 제거
     string dfaFile = base + "_dfa.txt";
     dfa.outputToFile(dfaFile);
-    // Minimize DFA (Hopcroft's algorithm)
+    // DFA 최소화 (Hopcroft 알고리즘)
     ReducedDFA minDfa = dfa.minimize();
     string minFile = base + "_reduced_dfa.txt";
     minDfa.outputToFile(minFile);
