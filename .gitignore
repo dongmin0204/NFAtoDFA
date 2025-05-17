@@ -1,5 +1,4 @@
 *.o
 *.out
 nfa_to_dfa
-input_*.txt
 .DS_Store

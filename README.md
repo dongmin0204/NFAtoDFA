@@ -12,16 +12,27 @@
 
 ## 빌드 및 실행 방법
 
-### 1. 빌드
+### 1. 리눅스/유닉스(macOS 포함) 환경
 ```sh
 make clean && make
-```
-
-### 2. 실행
-```sh
 ./nfa_to_dfa <inputfile.txt>
 ```
+
+### 2. Windows 환경 (MinGW 사용)
+1. [MinGW-w64](https://www.mingw-w64.org/)를 설치합니다.
+2. 명령 프롬프트(cmd) 또는 PowerShell에서 아래 명령어를 실행합니다:
+```sh
+g++ -std=c++17 -o nfa_to_dfa.exe main.cpp
+```
+3. 실행:
+```sh
+nfa_to_dfa.exe <inputfile.txt>
+```
 - `<inputfile.txt>`: (ε-)NFA가 정의된 입력 파일
+
+> **참고:**
+> - Windows에서는 `make` 대신 위와 같이 직접 g++ 명령어를 사용하세요.
+> - 입력/출력 파일 인코딩은 UTF-8을 권장합니다.
 
 ### 3. 출력
 - `<inputfile>_nfa.txt`: 입력 NFA를 재정렬하여 출력
@@ -108,6 +119,13 @@ FinalStateSet = { q003 }
 ## 요구사항
 - C++17 이상
 - GCC 또는 호환 컴파일러
+- (Windows: MinGW-w64 권장)
+
+---
+
+## 과제 제출 안내(예시)
+- 소스코드 압축: 코드_(학번)_(이름).zip
+- 보고서: 보고서_(학번)_(이름).pdf (코드 설명, 실행화면, 소감 등 포함)
 
 ---
 
